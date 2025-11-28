@@ -1,26 +1,67 @@
-@import "tailwindcss";
-
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+/* Make images fit within the editor box */
+.editor-page img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+  margin: 8px auto;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+/* Basic text spacing */
+.editor-page p {
+  margin: 0 0 0.75rem;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+.editor-page h1,
+.editor-page h2,
+.editor-page h3 {
+  margin-top: 0;
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+/* 🔥 Make caret (cursor) VERY visible */
+.ProseMirror {
+  caret-color: #ff0000 !important; /* bright red caret */
+}
+
+/* Also ensure empty paragraphs still show a caret line */
+.ProseMirror p:empty::before {
+  content: " ";
+  white-space: pre;
+}
+
+/* Toolbar styles (unchanged) */
+.editor-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 8px;
+  padding: 6px 8px;
+  background: #f3f4f6;
+  border-radius: 8px;
+  border: 1px solid #e5e7eb;
+}
+
+.toolbar-button {
+  font-size: 13px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  background: white;
+  cursor: pointer;
+}
+
+.toolbar-button-active {
+  background: #2563eb;
+  color: white;
+  border-color: #1d4ed8;
+}
+
+.toolbar-button:hover {
+  border-color: #cbd5f5;
+}
+
+.toolbar-divider {
+  width: 1px;
+  align-self: stretch;
+  background: #d1d5db;
+  margin: 0 4px;
 }
