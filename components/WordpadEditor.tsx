@@ -1,18 +1,15 @@
-// components/WordpadEditor.tsx
 "use client";
 
 import React, { useRef } from "react";
-import { useEditor, EditorContent } from "@tiptap/react";
+import { EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Image from "@tiptap/extension-image";
 
 type Props = {
-  containerRef:
-    | React.RefObject<HTMLDivElement>
-    | React.MutableRefObject<HTMLDivElement | null>;
+  containerRef: React.RefObject<HTMLDivElement>;
 };
 
-// BANNED WORDS
+// Banned words
 const bannedPhrases = [
   "Sign Up",
   "sign up",
@@ -23,27 +20,28 @@ const bannedPhrases = [
   "Report Abuse",
 ];
 
-function sanitize(text: string) {
-  console.log("--------------------------------------------------");
-  console.log("[SANITIZE] RAW INPUT:", JSON.stringify(text));
+// Remove banned phrases inside TEXT nodes only
+function sanitizeHTML(html: string): string {
+  const div = document.createElement("div");
+  div.innerHTML = html;
 
-  let out = text;
+  const walker = document.createTreeWalker(div, NodeFilter.SHOW_TEXT);
+  let current: Node | null;
 
-  bannedPhrases.forEach((phrase) => {
-    const escaped = phrase.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const regex = new RegExp(escaped, "gi");
+  while ((current = walker.nextNode())) {
+    let text = current.nodeValue || "";
 
-    if (regex.test(out)) {
-      console.log(`[SANITIZE] Removing: ${phrase}`);
-      out = out.replace(regex, "");
-    }
-  });
+    bannedPhrases.forEach((p) => {
+      const escaped = p.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const regex = new RegExp(escaped, "gi");
 
-  out = out.replace(/[ \t]{2,}/g, " ").trim();
-  console.log("[SANITIZE] FINAL:", JSON.stringify(out));
-  console.log("--------------------------------------------------");
+      text = text.replace(regex, "");
+    });
 
-  return out;
+    current.nodeValue = text;
+  }
+
+  return div.innerHTML;
 }
 
 export default function WordpadEditor({ containerRef }: Props) {
@@ -52,64 +50,60 @@ export default function WordpadEditor({ containerRef }: Props) {
     content: `<p>Paste something…</p>`,
     immediatelyRender: false,
 
-    // ⚠️ IMPORTANT: DO NOT block Tiptap paste fully
     editorProps: {
-      transformPastedHTML(html) {
-        // allow normal HTML paste unless our React handler stops it
-        return html;
+      handlePaste(view, ev: ClipboardEvent, slice) {
+        if (!ev.clipboardData) return false;
+
+        const hasImage = Array.from(ev.clipboardData.items).some((i) =>
+          i.type.startsWith("image/")
+        );
+
+        if (hasImage) {
+          // allow native image paste
+          return false;
+        }
+
+        // block Tiptap text paste
+        return true;
       },
     },
   });
 
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   if (!editor) return null;
 
-  // MASTER PASTE HANDLER — handles text, HTML, AND images
   const handlePaste = (event: React.ClipboardEvent) => {
-    console.log("==================================================");
-    console.log("[PASTE] Event:", event);
-
     const dt = event.clipboardData;
-    console.log("[PASTE] clipboard types:", dt.types);
+    if (!dt) return;
 
-    // 🔥 1️⃣ CHECK FOR IMAGE PASTE
+    const plain = dt.getData("text/plain") || "";
+    const html = dt.getData("text/html") || "";
+
     const hasImage = Array.from(dt.items).some((item) =>
       item.type.startsWith("image/")
     );
 
+    // Allow Tiptap to handle image pastes normally
     if (hasImage) {
-      console.log("[PASTE] IMAGE detected → allow Tiptap to handle it");
-      return; // DO NOT preventDefault → Tiptap inserts the image
+      return;
     }
 
-    // 2️⃣ HANDLE PLAIN TEXT
-    const plain = dt.getData("text/plain");
-    const html = dt.getData("text/html");
+    event.preventDefault();
 
-    console.log("[PASTE] text/plain:", JSON.stringify(plain));
-    console.log("[PASTE] text/html:", html);
-
-    event.preventDefault(); // stop browser default paste for text
-
-    let extracted = plain;
-
-    // If no plain text → extract from HTML
-    if (!extracted && html) {
-      const temp = document.createElement("div");
-      temp.innerHTML = html;
-      extracted = temp.innerText;
-      console.log("[PASTE] Extracted text from HTML:", extracted);
+    // HTML paste
+    if (html.trim().length > 0) {
+      const cleaned = sanitizeHTML(html);
+      editor.chain().focus().insertContent(cleaned).run();
+      return;
     }
 
-    const cleaned = sanitize(extracted);
-    console.log("[PASTE] Inserting CLEANED:", cleaned);
-
-    editor
-      .chain()
-      .focus()
-      .insertContent(cleaned || " ")
-      .run();
-    console.log("==================================================");
+    // Plain text paste
+    if (plain.trim().length > 0) {
+      const wrappedHTML = plain.replace(/\n/g, "<br/>");
+      const cleaned = sanitizeHTML(wrappedHTML);
+      editor.chain().focus().insertContent(cleaned).run();
+      return;
+    }
   };
 
   return (
@@ -136,14 +130,16 @@ export default function WordpadEditor({ containerRef }: Props) {
           ref={fileInputRef}
           type="file"
           accept="image/*"
-          style={{ display: "none" }}
+          hidden
           onChange={(e) => {
             const file = e.target.files?.[0];
             if (!file) return;
 
             const reader = new FileReader();
-            reader.onload = () => {
-              const src = reader.result as string;
+            reader.onload = (res) => {
+              const src =
+                typeof res.target?.result === "string" ? res.target.result : "";
+              if (!src) return;
 
               editor
                 .chain()
@@ -153,13 +149,15 @@ export default function WordpadEditor({ containerRef }: Props) {
                 .run();
             };
             reader.readAsDataURL(file);
+
+            e.target.value = "";
           }}
         />
       </div>
 
       {/* Editor */}
       <div
-        ref={containerRef as any}
+        ref={containerRef}
         className="editor-page"
         style={{
           background: "white",

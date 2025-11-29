@@ -5,7 +5,7 @@ import { useRef } from "react";
 import WordpadEditor from "../components/WordpadEditor";
 
 export default function HomePage() {
-  const editorContainerRef = useRef<HTMLDivElement | null>(null);
+  const editorContainerRef = useRef<HTMLDivElement>(null!);
 
   const handleSavePdf = async () => {
     if (!editorContainerRef.current) return;
