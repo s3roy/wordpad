@@ -12,56 +12,117 @@ type Props = {
     | React.MutableRefObject<HTMLDivElement | null>;
 };
 
+// BANNED WORDS
+const bannedPhrases = [
+  "Sign Up",
+  "sign up",
+  "SIGN UP",
+  "Signup",
+  "signup",
+  `"Concept && Coding" YT Video Notes`,
+  "Report Abuse",
+];
+
+function sanitize(text: string) {
+  console.log("--------------------------------------------------");
+  console.log("[SANITIZE] RAW INPUT:", JSON.stringify(text));
+
+  let out = text;
+
+  bannedPhrases.forEach((phrase) => {
+    const escaped = phrase.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const regex = new RegExp(escaped, "gi");
+
+    if (regex.test(out)) {
+      console.log(`[SANITIZE] Removing: ${phrase}`);
+      out = out.replace(regex, "");
+    }
+  });
+
+  out = out.replace(/[ \t]{2,}/g, " ").trim();
+  console.log("[SANITIZE] FINAL:", JSON.stringify(out));
+  console.log("--------------------------------------------------");
+
+  return out;
+}
+
 export default function WordpadEditor({ containerRef }: Props) {
   const editor = useEditor({
     extensions: [StarterKit, Image],
-    content: `
-      <h1>Paste your heading here</h1>
-      <p>Click here and start typing, or paste text and images.</p>
-      <p>When you're done, click "Save as PDF" at the top.</p>
-    `,
-    // Needed for Next.js SSR to avoid hydration mismatch
+    content: `<p>Paste something…</p>`,
     immediatelyRender: false,
+
+    // ⚠️ IMPORTANT: DO NOT block Tiptap paste fully
+    editorProps: {
+      transformPastedHTML(html) {
+        // allow normal HTML paste unless our React handler stops it
+        return html;
+      },
+    },
   });
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-
   if (!editor) return null;
+
+  // MASTER PASTE HANDLER — handles text, HTML, AND images
+  const handlePaste = (event: React.ClipboardEvent) => {
+    console.log("==================================================");
+    console.log("[PASTE] Event:", event);
+
+    const dt = event.clipboardData;
+    console.log("[PASTE] clipboard types:", dt.types);
+
+    // 🔥 1️⃣ CHECK FOR IMAGE PASTE
+    const hasImage = Array.from(dt.items).some((item) =>
+      item.type.startsWith("image/")
+    );
+
+    if (hasImage) {
+      console.log("[PASTE] IMAGE detected → allow Tiptap to handle it");
+      return; // DO NOT preventDefault → Tiptap inserts the image
+    }
+
+    // 2️⃣ HANDLE PLAIN TEXT
+    const plain = dt.getData("text/plain");
+    const html = dt.getData("text/html");
+
+    console.log("[PASTE] text/plain:", JSON.stringify(plain));
+    console.log("[PASTE] text/html:", html);
+
+    event.preventDefault(); // stop browser default paste for text
+
+    let extracted = plain;
+
+    // If no plain text → extract from HTML
+    if (!extracted && html) {
+      const temp = document.createElement("div");
+      temp.innerHTML = html;
+      extracted = temp.innerText;
+      console.log("[PASTE] Extracted text from HTML:", extracted);
+    }
+
+    const cleaned = sanitize(extracted);
+    console.log("[PASTE] Inserting CLEANED:", cleaned);
+
+    editor
+      .chain()
+      .focus()
+      .insertContent(cleaned || " ")
+      .run();
+    console.log("==================================================");
+  };
 
   return (
     <div>
-      {/* Inline toolbar just for the editor */}
+      {/* Toolbar */}
       <div className="editor-toolbar">
-        <button
-          type="button"
-          className={
-            "toolbar-button" +
-            (editor.isActive("bold") ? " toolbar-button-active" : "")
-          }
-          onClick={() => editor.chain().focus().toggleBold().run()}
-        >
+        <button onClick={() => editor.chain().focus().toggleBold().run()}>
           B
         </button>
-
-        <button
-          type="button"
-          className={
-            "toolbar-button" +
-            (editor.isActive("italic") ? " toolbar-button-active" : "")
-          }
-          onClick={() => editor.chain().focus().toggleItalic().run()}
-        >
+        <button onClick={() => editor.chain().focus().toggleItalic().run()}>
           I
         </button>
-
         <button
-          type="button"
-          className={
-            "toolbar-button" +
-            (editor.isActive("heading", { level: 1 })
-              ? " toolbar-button-active"
-              : "")
-          }
           onClick={() =>
             editor.chain().focus().toggleHeading({ level: 1 }).run()
           }
@@ -69,70 +130,7 @@ export default function WordpadEditor({ containerRef }: Props) {
           H1
         </button>
 
-        <button
-          type="button"
-          className={
-            "toolbar-button" +
-            (editor.isActive("heading", { level: 2 })
-              ? " toolbar-button-active"
-              : "")
-          }
-          onClick={() =>
-            editor.chain().focus().toggleHeading({ level: 2 }).run()
-          }
-        >
-          H2
-        </button>
-
-        <button
-          type="button"
-          className={
-            "toolbar-button" +
-            (editor.isActive("bulletList") ? " toolbar-button-active" : "")
-          }
-          onClick={() => editor.chain().focus().toggleBulletList().run()}
-        >
-          • List
-        </button>
-
-        <button
-          type="button"
-          className={
-            "toolbar-button" +
-            (editor.isActive("orderedList") ? " toolbar-button-active" : "")
-          }
-          onClick={() => editor.chain().focus().toggleOrderedList().run()}
-        >
-          1. List
-        </button>
-
-        <span className="toolbar-divider" />
-
-        <button
-          type="button"
-          className="toolbar-button"
-          onClick={() => editor.chain().focus().undo().run()}
-        >
-          Undo
-        </button>
-        <button
-          type="button"
-          className="toolbar-button"
-          onClick={() => editor.chain().focus().redo().run()}
-        >
-          Redo
-        </button>
-
-        <span className="toolbar-divider" />
-
-        {/* Image upload button */}
-        <button
-          type="button"
-          className="toolbar-button"
-          onClick={() => fileInputRef.current?.click()}
-        >
-          Image
-        </button>
+        <button onClick={() => fileInputRef.current?.click()}>Image</button>
 
         <input
           ref={fileInputRef}
@@ -147,40 +145,29 @@ export default function WordpadEditor({ containerRef }: Props) {
             reader.onload = () => {
               const src = reader.result as string;
 
-              // Insert image and then a new empty paragraph so cursor goes to next line
               editor
                 .chain()
                 .focus()
                 .setImage({ src })
-                .insertContent("<p></p>") // 🔥 force caret below the image
+                .insertContent("<p></p>")
                 .run();
             };
             reader.readAsDataURL(file);
-
-            // allow re-selecting the same file
-            e.target.value = "";
           }}
         />
       </div>
 
-      {/* Editor “page” (goes into PDF) */}
+      {/* Editor */}
       <div
         ref={containerRef as any}
         className="editor-page"
         style={{
           background: "white",
           padding: "40px",
-          borderRadius: "12px",
           minHeight: "900px",
-          boxShadow: "0 12px 30px rgba(15,23,42,0.18)",
-          fontFamily:
-            "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
-          lineHeight: 1.6,
-          cursor: "text",
-          overflow: "hidden",
         }}
       >
-        <EditorContent editor={editor} />
+        <EditorContent editor={editor} onPaste={handlePaste} />
       </div>
     </div>
   );
